@@ -14,6 +14,10 @@ static uint8_t tim4_scaler_5 = 0;
 std::array<char, 24> screen_string_buffer{}; // 字符串缓冲区
 
 inline static void RefreshDisplay() {
+	if (!Status::ssd1306Enabled) {
+		return; // 如果屏幕未启用，则不进行刷新
+	}
+
 	ssd1306.SetCursor(0, Status::bleMACParsed ? 28 : 24);
 	ssd1306.WriteString("'(.", SSD1306Fonts::Font_CN); // “亮度：”
 	int8ToString(Status::target, screen_string_buffer.data());

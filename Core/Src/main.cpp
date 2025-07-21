@@ -81,20 +81,22 @@ int main(void) {
 			}
 		}
 
-		// 在屏幕显示标题和 MAC 地址
-		extern std::array<char, 18> screen_string_buffer;
-		ssd1306.SetCursor(0, 0);
+		if (Status::ssd1306Enabled) {
+			// 在屏幕显示标题和 MAC 地址
+			extern std::array<char, 18> screen_string_buffer;
+			ssd1306.SetCursor(0, 0);
 
-		if (Status::bleMACParsed && Status::bleMACTo(screen_string_buffer) > 0) {
-			ssd1306.WriteString("Dart Nav Light", SSD1306Fonts::Font_7x10);
-			ssd1306.SetCursor(0, 14);
-			ssd1306.WriteString(screen_string_buffer.data(), SSD1306Fonts::Font_7x10);
-		} else {
-			Status::bleMACParsed = false;
-			ssd1306.WriteString("Nav Light", SSD1306Fonts::Font_11x18);
+			if (Status::bleMACParsed && Status::bleMACTo(screen_string_buffer) > 0) {
+				ssd1306.WriteString("Dart Nav Light", SSD1306Fonts::Font_7x10);
+				ssd1306.SetCursor(0, 14);
+				ssd1306.WriteString(screen_string_buffer.data(), SSD1306Fonts::Font_7x10);
+			} else {
+				Status::bleMACParsed = false;
+				ssd1306.WriteString("Nav Light", SSD1306Fonts::Font_11x18);
+			}
+
+			ssd1306.UpdateScreen(0, 2);
 		}
-
-		ssd1306.UpdateScreen(0, 2);
 
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_data_buffer.data(), uart_data_buffer.size());
 		__HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE); // 启用空闲中断
@@ -105,13 +107,16 @@ int main(void) {
 		HAL_TIM_Base_Start_IT(&htim4); // 10Hz
 	} else {
 		// 蓝牙模块未插上，不执行正常逻辑
-		ssd1306.SetCursor((128 - 3 * 16) / 2, 12);
-		ssd1306.WriteString(" !\"", SSD1306Fonts::Font_CN); // “未插入”
 
-		ssd1306.SetCursor((128 - 4 * 16) / 2, 36);
-		ssd1306.WriteString("#$%&", SSD1306Fonts::Font_CN); // “蓝牙模块”
+		if (Status::ssd1306Enabled) {
+			ssd1306.SetCursor((128 - 3 * 16) / 2, 12);
+			ssd1306.WriteString(" !\"", SSD1306Fonts::Font_CN); // “未插入”
 
-		ssd1306.UpdateScreen();
+			ssd1306.SetCursor((128 - 4 * 16) / 2, 36);
+			ssd1306.WriteString("#$%&", SSD1306Fonts::Font_CN); // “蓝牙模块”
+
+			ssd1306.UpdateScreen();
+		}
 
 		while (1) { }
 	}
@@ -132,7 +137,7 @@ int main(void) {
 			HAL_GPIO_WritePin(LED_Enable_GPIO_Port, LED_Enable_Pin, Status::brightness == 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
 		}
 
-		HAL_Delay(10);
+		HAL_Delay(5);
 	}
 }
 
