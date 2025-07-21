@@ -26,13 +26,24 @@ int main(void) {
 	MX_I2C1_Init();
 
 	HAL_Delay(80); // 等待 80ms 以确保屏幕启动完成
-	ssd1306.Start(); // 启动屏幕
+	if (Status::ssd1306Enabled) {
+		Status::ssd1306Enabled = ssd1306.Start() == HAL_OK; // 启动屏幕
+	} else {
+		HAL_Delay(40); // 如果屏幕未启用，等待 40ms
+	}
 
 	HAL_Delay(80); // 继续等待 80ms 以确保蓝牙模块启动完成
 	auto ble_3v3_detected = HAL_GPIO_ReadPin(BLE_3V3_Detect_GPIO_Port, BLE_3V3_Detect_Pin); // 检查蓝牙模块是否插上
 
 	if (ble_3v3_detected == GPIO_PIN_SET) {
 		// 蓝牙模块已插上，进一步初始化变量和片上外设
+
+		constexpr std::string_view AT_CMD_GET_ADDR = "AT+LADDR\r\n";
+		constexpr std::string_view EXPECTED_RESPONSE_PREFIX = "+LADDR=";
+		constexpr size_t MAC_STRING_LENGTH = 12; // "AABBCCDDEEFF"
+		// 预期响应的总长度："+LADDR=" (7) + MAC (12) = 19
+		constexpr size_t EXPECTED_RESPONSE_LENGTH = EXPECTED_RESPONSE_PREFIX.length() + MAC_STRING_LENGTH;
+
 		Status::ble3v3Detected = true;
 
 		HAL_GPIO_WritePin(BLE_Key_GPIO_Port, BLE_Key_Pin, GPIO_PIN_RESET); // 使蓝牙模块断开连接
@@ -41,21 +52,57 @@ int main(void) {
 
 		HAL_Delay(80); // 等待 80ms 以确保蓝牙模块恢复正常
 
-		// // 查询 MAC 地址
-		// HAL_UART_Transmit(&huart1, (uint8_t *)("AT+LADDR\r\n"), 10, 100);
+		// 查询 MAC 地址
+		HAL_UART_Transmit(&huart1,
+			reinterpret_cast<const uint8_t *>(AT_CMD_GET_ADDR.data()),
+			AT_CMD_GET_ADDR.size(),
+			100);
 
-		// // +LADDR=xxxxxxxxxxxx
-		// HAL_UART_Receive(&huart1, uart_data_buffer.data(), 19, 100);
+		// +LADDR=xxxxxxxxxxxx
+		HAL_StatusTypeDef rx_status = HAL_UART_Receive(&huart1,
+			uart_data_buffer.data(),
+			EXPECTED_RESPONSE_LENGTH,
+			100);
 
-		// Status::bleMACFromCString(reinterpret_cast<char *>(uart_data_buffer.data() + 7)); // 跳过 "+LADDR=" 前缀
+		if (rx_status == HAL_OK) {
+			// 使用 string_view 无内存拷贝
+			std::string_view response(reinterpret_cast<const char *>(uart_data_buffer.data()),
+				EXPECTED_RESPONSE_LENGTH);
+
+			// 检查响应头是否正确
+			if (response.starts_with(EXPECTED_RESPONSE_PREFIX)) {
+				// 提取 MAC 地址部分
+				std::string_view mac_part = response.substr(EXPECTED_RESPONSE_PREFIX.length());
+				// 调用解析函数
+				if (Status::bleMACFrom(mac_part)) {
+					// 成功解析 MAC 地址
+					Status::bleMACParsed = true;
+				}
+			}
+		}
+
+		// 在屏幕显示标题和 MAC 地址
+		extern std::array<char, 18> screen_string_buffer;
+		ssd1306.SetCursor(0, 0);
+
+		if (Status::bleMACParsed && Status::bleMACTo(screen_string_buffer) > 0) {
+			ssd1306.WriteString("Dart Nav Light", SSD1306Fonts::Font_7x10);
+			ssd1306.SetCursor(0, 14);
+			ssd1306.WriteString(screen_string_buffer.data(), SSD1306Fonts::Font_7x10);
+		} else {
+			Status::bleMACParsed = false;
+			ssd1306.WriteString("Nav Light", SSD1306Fonts::Font_11x18);
+		}
+
+		ssd1306.UpdateScreen(0, 2);
 
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_data_buffer.data(), uart_data_buffer.size());
-		__HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
+		__HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE); // 启用空闲中断
 
 		HAL_TIM_Base_Start(&htim1);
 		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 
-		HAL_TIM_Base_Start_IT(&htim4); // 1kHz
+		HAL_TIM_Base_Start_IT(&htim4); // 10Hz
 	} else {
 		// 蓝牙模块未插上，不执行正常逻辑
 		ssd1306.SetCursor((128 - 3 * 16) / 2, 12);
@@ -68,7 +115,6 @@ int main(void) {
 
 		while (1) { }
 	}
-
 
 	while (1) {
 		if (Status::getFanStatus() != Status::lastFanStatus) {

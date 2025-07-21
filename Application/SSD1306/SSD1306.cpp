@@ -7,7 +7,6 @@ HAL_StatusTypeDef SSD1306::Start() {
 	status += WriteCommand(0xAE); // 发送命令：关闭显示
 	status += WriteCommand(0x20); // 发送命令：设置内存寻址模式
 	status += WriteCommand(0x00); // 发送命令：设置为页面寻址模式 (00=水平寻址模式, 01=垂直寻址模式, 10=页面寻址模式, 11=无效)
-	status += WriteCommand(0xB0); // 发送命令：设置页面起始地址为第0到第7页
 	status += WriteCommand(0xC8); // 发送命令：设置COM输出扫描方向
 	status += WriteCommand(0x00); // 发送命令：设置低列地址
 	status += WriteCommand(0x10); // 发送命令：设置高列地址
@@ -36,15 +35,16 @@ HAL_StatusTypeDef SSD1306::Start() {
 	status += WriteCommand(0x8D); // 发送命令：设置 DC-DC 控制
 	status += WriteCommand(0x14); // 启用 DC-DC 转换器
 
-	// 设置列地址范围
-	status += WriteCommand(0x21); // 设置列地址命令
-	status += WriteCommand(0);    // 起始列地址
-	status += WriteCommand(WIDTH - 1); // 结束列地址
-
-	// 设置页地址范围
-	status += WriteCommand(0x22); // 设置页地址命令
-	status += WriteCommand(0);    // 起始页地址
-	status += WriteCommand(7);    // 结束页地址（对于64像素高的屏幕，有8页，0-7）
+	// 设置列、页地址范围
+	uint8_t commands[] = {
+		0x21,       // Set Column Address
+		0,          // Start column
+		WIDTH - 1,  // End column
+		0x22,       // Set Page Address
+		0,          // Start page
+		7           // End page
+	};
+	WriteCommands(commands);
 
 	// 清屏
 	Clear();
@@ -65,19 +65,6 @@ HAL_StatusTypeDef SSD1306::Start() {
 	_started = 1;
 
 	return HAL_OK;
-}
-
-HAL_StatusTypeDef SSD1306::WriteCommand(uint8_t command) {
-	return HAL_I2C_Mem_Write(_hi2c, _i2c_address, 0x00, I2C_MEMADD_SIZE_8BIT, &command, 1, 5);
-}
-
-void SSD1306::Fill(Color color/* = Color::White*/) {
-	// 填充屏幕缓冲区
-	_buffer.fill((color == Color::Black) ? 0x00 : 0xFF);
-}
-
-void SSD1306::UpdateScreen() {
-	HAL_I2C_Mem_Write_DMA(_hi2c, _i2c_address, 0x40, I2C_MEMADD_SIZE_8BIT, _buffer.data(), _buffer.size());
 }
 
 void SSD1306::DrawPixel(uint8_t x, uint8_t y, Color color/* = Color::White*/) {
@@ -137,13 +124,4 @@ char SSD1306::WriteString(const char *str, SSD1306Font Font, Color color/* = Col
 	}
 
 	return *str;
-}
-
-void SSD1306::SetCursor(uint8_t x, uint8_t y) {
-	_currentX = x;
-	_currentY = y;
-}
-
-void SSD1306::InvertColors() {
-	_inverted = !_inverted;
 }

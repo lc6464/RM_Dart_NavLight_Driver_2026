@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <span>
 
 #include "i2c.h"
 #include "SSD1306_Fonts.h"
@@ -29,13 +30,40 @@ public:
 	/**
 	 * @brief 更新屏幕
 	 */
-	void UpdateScreen();
+	void UpdateScreen(uint8_t startPage = 0, uint8_t endPage = 7) {
+		if (startPage > 7 || endPage > 7 || startPage > endPage) {
+			return; // 非法页面范围
+		}
+
+		// 在横向寻址模式下，每次刷新区域前必须同时设置页地址和列地址
+		// 这样可以确保控制器的内部指针被正确设置到区域的左上角
+		uint8_t commands[] = {
+			0x21,       // Set Column Address
+			0,          // Start column
+			WIDTH - 1,  // End column
+			0x22,       // Set Page Address
+			startPage,
+			endPage
+		};
+		WriteCommands(commands);
+
+		HAL_I2C_Mem_Write_DMA(
+			_hi2c,
+			_i2c_address,
+			0x40,
+			I2C_MEMADD_SIZE_8BIT,
+			_buffer.data() + startPage * WIDTH,
+			(endPage - startPage + 1) * WIDTH
+		);
+	}
 
 	/**
 	 * @brief 填充屏幕
 	 * @param color 填充颜色
 	 */
-	void Fill(Color color = Color::White);
+	void Fill(Color color = Color::White) {
+		_buffer.fill((color == Color::Black) ? 0x00 : 0xFF);
+	}
 
 	/**
 	 * @brief 清屏
@@ -73,12 +101,17 @@ public:
 	 * @param x X 坐标
 	 * @param y Y 坐标
 	 */
-	void SetCursor(uint8_t x, uint8_t y);
+	void SetCursor(uint8_t x, uint8_t y) {
+		_currentX = x;
+		_currentY = y;
+	}
 
 	/**
 	 * @brief 反转颜色
 	 */
-	void InvertColors();
+	void InvertColors() {
+		_inverted = !_inverted;
+	}
 
 private:
 	static constexpr uint16_t WIDTH = 128;
@@ -99,5 +132,16 @@ private:
 	 * @param command 命令
 	 * @return 操作状态
 	 */
-	HAL_StatusTypeDef WriteCommand(uint8_t command);
+	HAL_StatusTypeDef WriteCommand(uint8_t command) {
+		return HAL_I2C_Mem_Write(_hi2c, _i2c_address, 0x00, I2C_MEMADD_SIZE_8BIT, &command, 1, 5);
+	}
+
+	/**
+	 * @brief 发送多个命令到 OLED
+	 * @param commands 命令数组
+	 * @return 操作状态
+	 */
+	HAL_StatusTypeDef WriteCommands(const std::span<uint8_t> &commands) {
+		return HAL_I2C_Mem_Write(_hi2c, _i2c_address, 0x00, I2C_MEMADD_SIZE_8BIT, commands.data(), commands.size(), 10);
+	}
 };

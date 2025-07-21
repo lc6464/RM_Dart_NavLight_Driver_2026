@@ -31,6 +31,7 @@ public:
 	static const SSD1306Font Font_7x10;
 	static const SSD1306Font Font_11x18;
 	static const SSD1306Font Font_CN;
+	static const SSD1306Font Font_Space;
 
 private:
 	/**
@@ -39,4 +40,5 @@ private:
 	static const uint16_t Font7x10[];
 	static const uint16_t Font11x18[];
 	static const uint16_t FontCN[];
+	static const uint16_t FontSpace[];
 };

@@ -11,34 +11,38 @@
 
 static uint8_t tim4_scaler_5 = 0;
 
-static char string_buffer[24] = { 0 }; // 字符串缓冲区
+std::array<char, 24> screen_string_buffer{}; // 字符串缓冲区
 
 inline static void RefreshDisplay() {
-	ssd1306.Clear();
-	ssd1306.SetCursor(0, 0);
-	ssd1306.WriteString("Nav Light", SSD1306Fonts::Font_11x18);
-
-	// Status::bleMACToCString(mac_string);
-	// ssd1306.SetCursor(0, 18);
-	// ssd1306.WriteString(mac_string, SSD1306Fonts::Font_7x10);
-
-	ssd1306.SetCursor(0, 24);
+	ssd1306.SetCursor(0, Status::bleMACParsed ? 28 : 24);
 	ssd1306.WriteString("'(.", SSD1306Fonts::Font_CN); // “亮度：”
-	string_buffer[int8ToString(Status::target, string_buffer)] = '\0'; // 确保字符串以 '\0' 结尾
-	ssd1306.WriteString(string_buffer, SSD1306Fonts::Font_11x18);
+	int8ToString(Status::target, screen_string_buffer.data());
+	ssd1306.WriteString(screen_string_buffer.data(), SSD1306Fonts::Font_11x18);
 	ssd1306.WriteString("%  ", SSD1306Fonts::Font_11x18);
 
-	ssd1306.SetCursor(0, 44);
+	ssd1306.SetCursor(0, Status::bleMACParsed ? 48 : 46);
 	ssd1306.WriteString(")*.", SSD1306Fonts::Font_CN); // “风扇：”
-	if (Status::brightness > 0) {
+	if (Status::target > 0) { // 通过 target 判断，以免 UI 不同步使人误解
 		ssd1306.WriteString("+,-", SSD1306Fonts::Font_CN); // “运行中”
+		ssd1306.WriteString("  ", SSD1306Fonts::Font_Space);
 	} else if (Status::getFanStatus()) {
 		ssd1306.WriteString("1/0", SSD1306Fonts::Font_CN); // “将停止”
+		ssd1306.WriteString("  ", SSD1306Fonts::Font_Space);
+
+		auto remaining_time = Status::getFanOffRemainingTime();
+		remaining_time = (remaining_time < 0 ? Status::getFanOffTickMax() : remaining_time) / 10 + 1; // 转换为秒
+
+		ssd1306.SetCursor(110 - remaining_time / 10 * 7, 54);
+		auto length = int16ToString(remaining_time, screen_string_buffer.data());
+		screen_string_buffer[length++] = 's'; // 添加单位
+		screen_string_buffer[length] = '\0'; // 确保字符串以 '\0' 结尾
+		ssd1306.WriteString(screen_string_buffer.data(), SSD1306Fonts::Font_7x10);
 	} else {
 		ssd1306.WriteString("2/0", SSD1306Fonts::Font_CN); // “已停止”
+		ssd1306.WriteString("  ", SSD1306Fonts::Font_Space);
 	}
 
-	ssd1306.UpdateScreen();
+	ssd1306.UpdateScreen(3); // 刷新第3页到第7页
 }
 
 inline static void TIM4_Update_Callback() {
@@ -48,20 +52,20 @@ inline static void TIM4_Update_Callback() {
 
 	auto diff = std::abs(Status::target - Status::brightness);
 	auto step = 0;
-	if (Status::target == 0) {
-		step = 50;
-	} else if (diff > 50) {
+	if (diff > 50) {
 		step = 20;
-	} else if (diff > 20) {
+	} else if (diff > 25) {
 		step = 10;
-	} else {
+	} else if (diff > 12) {
 		step = 5;
+	} else {
+		step = 2;
 	}
 
 	if (Status::target > Status::brightness) {
 		Status::brightness = std::min(static_cast<int8_t>(Status::brightness + step), Status::target);
 	} else if (Status::target < Status::brightness) {
-		Status::brightness = std::max(static_cast<int8_t>(Status::brightness - step * 2), Status::target);
+		Status::brightness = std::max(static_cast<int8_t>(Status::brightness - step), Status::target);
 	}
 
 	RefreshDisplay();
