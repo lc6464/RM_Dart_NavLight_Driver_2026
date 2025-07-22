@@ -20,3 +20,5 @@ CMakeUserPresets.json
 
 .vscode/
 build/
+*.c.bak
+STM32CubeMXCPPConvertor.exe
